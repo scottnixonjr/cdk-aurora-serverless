@@ -1,6 +1,7 @@
 import * as cdk from '@aws-cdk/core';
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as rds from "@aws-cdk/aws-rds";
+import { CfnSecretTargetAttachment } from '@aws-cdk/aws-secretsmanager';
 /**
  * Followed these instructions: https://almirzulic.com/posts/create-serverless-aurora-cluster-with-cdk/
  */
@@ -9,10 +10,10 @@ export class CdkAuroraServerlessStack extends cdk.Stack {
     super(scope, id, props);
 
     const vpc = new ec2.Vpc(this, 'Vpc', {
-      cidr: '10.0.0.0/16',
+      cidr: '10.2.0.0/16',
       natGateways: 0,
       subnetConfiguration: [ 
-        { name: 'aurora_isolated_', subnetType: ec2.SubnetType.ISOLATED }
+        { name: 'aurora_postgres_isolated_', subnetType: ec2.SubnetType.ISOLATED }
       ]
     });
 
@@ -21,28 +22,31 @@ export class CdkAuroraServerlessStack extends cdk.Stack {
       subnetIds.push(subnet.subnetId);
     });
 
-    new cdk.CfnOutput(this, 'VpcSubnetIds', {
+    new cdk.CfnOutput(this, 'VpcPostgresSubnetIds', {
       value: JSON.stringify(subnetIds)
     });
     
-    new cdk.CfnOutput(this, 'VpcDefaultSecurityGroup', {
+    new cdk.CfnOutput(this, 'VpcPostgresSecurityGroup', {
       value: vpc.vpcDefaultSecurityGroup
     });
 
-    const dbSubnetGroup: rds.CfnDBSubnetGroup = new rds.CfnDBSubnetGroup(this, 'AuroraSubnetGroup', {
+    const dbSubnetGroup: rds.CfnDBSubnetGroup = new rds.CfnDBSubnetGroup(this, 'AuroraPostgresSubnetGroup', {
       dbSubnetGroupDescription: 'Subnet group to access aurora',
-      dbSubnetGroupName: 'aurora-serverless-subnet-group',
+      dbSubnetGroupName: 'aurora-serverless-postgres-subnet',
       subnetIds
     });
 
+    const secret = new rds.DatabaseSecret(this, 'MuServerless', {
+      username: 'syscdk'
+    });
+
     const aurora = new rds.CfnDBCluster(this, 'AuroraServerless', {
-      databaseName: 'dbname',
-      dbClusterIdentifier: 'aurora-serverless',
-      engine: 'aurora',
+      databaseName: 'acmepostgresql',
+      dbClusterIdentifier: 'aurora-postgres-serverless',
+      engine: 'aurora-postgresql',
       engineMode: 'serverless',
-      masterUsername: 'masteruser',
-      masterUserPassword: 'IT_IS_SMART_TO_GENERATE_AND_OUTPUT_THIS',
-      port: 3306,
+      masterUsername: secret.secretValueFromJson("username").toString(),
+      masterUserPassword: secret.secretValueFromJson("password").toString(),
       dbSubnetGroupName: dbSubnetGroup.dbSubnetGroupName,
       scalingConfiguration: {
         autoPause: true,
@@ -51,14 +55,14 @@ export class CdkAuroraServerlessStack extends cdk.Stack {
         secondsUntilAutoPause: 3600
       }
     });
-    
+
+    new CfnSecretTargetAttachment(this, 'AttachSecret', {
+      targetType: 'AWS::RDS::DBCluster',
+      secretId: secret.secretArn,
+      targetId: aurora.ref
+    })
+
     //wait for subnet group to be created
     aurora.addDependsOn(dbSubnetGroup);
-
-    // const auroraArn = `arnrds:${region}:${account}${aurora.dbClusterIdentifier}`;
-
-    // new cdk.CfnOutput(this, 'AuroraClusterArn', {
-    //   value: auroraArn
-    // });
   }
 }
