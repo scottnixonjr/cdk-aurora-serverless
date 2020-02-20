@@ -1,6 +1,7 @@
 import * as cdk from '@aws-cdk/core';
 import * as ec2 from "@aws-cdk/aws-ec2";
 import * as rds from "@aws-cdk/aws-rds";
+import { CfnSecretTargetAttachment } from '@aws-cdk/aws-secretsmanager';
 /**
  * Followed these instructions: https://almirzulic.com/posts/create-serverless-aurora-cluster-with-cdk/
  */
@@ -54,14 +55,14 @@ export class CdkAuroraServerlessStack extends cdk.Stack {
         secondsUntilAutoPause: 3600
       }
     });
-    
+
+    new CfnSecretTargetAttachment(this, 'AttachSecret', {
+      targetType: 'AWS::RDS::DBCluster',
+      secretId: secret.secretArn,
+      targetId: aurora.ref
+    })
+
     //wait for subnet group to be created
     aurora.addDependsOn(dbSubnetGroup);
-
-    // const auroraArn = `arnrds:${region}:${account}${aurora.dbClusterIdentifier}`;
-
-    // new cdk.CfnOutput(this, 'AuroraClusterArn', {
-    //   value: auroraArn
-    // });
   }
 }
