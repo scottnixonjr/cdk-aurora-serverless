@@ -35,13 +35,17 @@ export class CdkAuroraServerlessStack extends cdk.Stack {
       subnetIds
     });
 
+    const secret = new rds.DatabaseSecret(this, 'MuServerless', {
+      username: 'syscdk'
+    });
+
     const aurora = new rds.CfnDBCluster(this, 'AuroraServerless', {
       databaseName: 'acmepostgresql',
       dbClusterIdentifier: 'aurora-postgres-serverless',
       engine: 'aurora-postgresql',
       engineMode: 'serverless',
-      masterUsername: 'masteruser',
-      masterUserPassword: 'IT_IS_SMART_TO_GENERATE_AND_OUTPUT_THIS',
+      masterUsername: secret.secretValueFromJson("username").toString(),
+      masterUserPassword: secret.secretValueFromJson("password").toString(),
       dbSubnetGroupName: dbSubnetGroup.dbSubnetGroupName,
       scalingConfiguration: {
         autoPause: true,
